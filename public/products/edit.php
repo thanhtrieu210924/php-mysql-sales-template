@@ -8,7 +8,7 @@ $error = '';
 $productID = (int) ($_GET['id'] ?? 0);
 
 if ($productID <= 0) {
-    header('Location: /products/');
+    header('Location: /admin/products/');
     exit;
 }
 
@@ -30,7 +30,7 @@ $product = $stmtProduct->get_result()->fetch_assoc();
 $stmtProduct->close();
 
 if (!$product) {
-    header('Location: /products/');
+    header('Location: /admin/products/');
     exit;
 }
 
@@ -51,31 +51,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             FILTER_VALIDATE_INT
         );
 
-        if ($imageID === false || $imageID === null || $imageID <= 0) {
+        if (
+            $imageID === false
+            || $imageID === null
+            || $imageID <= 0
+        ) {
             $error = 'ID ảnh không hợp lệ.';
+
         } else {
+
             $transactionStarted = false;
 
             try {
                 $conn->begin_transaction();
                 $transactionStarted = true;
 
-                $sqlResetPrimary = "
-                    UPDATE product_images
-                    SET IsPrimary = 0
-                    WHERE ProductID = ?
+                // 1. KIỂM TRA ẢNH CÓ THUỘC SẢN PHẨM HIỆN TẠI KHÔNG.
+
+                $sqlCheckImage = "
+                    SELECT ProductImageID
+                    FROM product_images
+                    WHERE ProductImageID = ?
+                      AND ProductID = ?
                 ";
 
-                $stmtResetPrimary = $conn->prepare($sqlResetPrimary);
-                $stmtResetPrimary->bind_param('i', $productID);
-                $stmtResetPrimary->execute();
-                $stmtResetPrimary->close();
+                $stmtCheckImage = $conn->prepare($sqlCheckImage);
+                $stmtCheckImage->bind_param(
+                    'ii',
+                    $imageID,
+                    $productID
+                );
+                $stmtCheckImage->execute();
+
+                $selectedImage = $stmtCheckImage
+                    ->get_result()
+                    ->fetch_assoc();
+
+                $stmtCheckImage->close();
+
+                if (!$selectedImage) {
+                    throw new Exception(
+                        'Không tìm thấy ảnh thuộc sản phẩm này.'
+                    );
+                }
+
+                // 2. CẬP NHẬT TRẠNG THÁI TẤT CẢ ẢNH.
+                //
+                // Ảnh được chọn: IsPrimary = 1.
+                // Các ảnh còn lại: IsPrimary = 0.
 
                 $sqlSetPrimary = "
                     UPDATE product_images
-                    SET IsPrimary = 1
-                    WHERE ProductImageID = ?
-                      AND ProductID = ?
+                    SET IsPrimary = CASE
+                        WHEN ProductImageID = ? THEN 1
+                        ELSE 0
+                    END
+                    WHERE ProductID = ?
                 ";
 
                 $stmtSetPrimary = $conn->prepare($sqlSetPrimary);
@@ -85,29 +116,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $productID
                 );
                 $stmtSetPrimary->execute();
-
-                if ($stmtSetPrimary->affected_rows !== 1) {
-                    $stmtSetPrimary->close();
-
-                    throw new Exception(
-                        'Không thể đặt ảnh chính. '
-                        . 'Vui lòng kiểm tra ảnh được chọn.'
-                    );
-                }
-
                 $stmtSetPrimary->close();
+
+                // 3. LƯU THAY ĐỔI VÀO DATABASE.
 
                 $conn->commit();
                 $transactionStarted = false;
 
+                // 4. TẢI LẠI TRANG ĐỂ HIỂN THỊ TRẠNG THÁI MỚI.
+
                 header(
-                    'Location: /products/edit.php?id='
+                    'Location: /admin/products/edit.php?id='
                     . $productID
                     . '&primary_updated=1'
                 );
                 exit;
 
             } catch (Throwable $e) {
+
                 if ($transactionStarted) {
                     try {
                         $conn->rollback();
@@ -116,7 +142,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
-                error_log($e->getMessage());
+                error_log(
+                    'Lỗi cập nhật ảnh chính: '
+                    . $e->getMessage()
+                );
+
                 $error = 'Không thể cập nhật ảnh chính.';
             }
         }
@@ -148,7 +178,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $transactionStarted = true;
 
                 // 1. ĐỌC THÔNG TIN ẢNH TRƯỚC KHI XÓA.
-                // Chỉ xóa ảnh thuộc sản phẩm hiện tại.
 
                 $sqlFindImage = "
                     SELECT
@@ -180,8 +209,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
                 }
 
-                // Lưu thông tin trước khi xóa bản ghi.
-                $imageFile = basename($imageToDelete['ImageFile']);
+                $imageFile = basename(
+                    $imageToDelete['ImageFile']
+                );
+
                 $wasPrimary = (int) $imageToDelete['IsPrimary'];
 
                 // 2. XÓA BẢN GHI ẢNH TRONG MYSQL.
@@ -211,13 +242,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtDeleteImage->close();
 
                 // 3. NẾU XÓA ẢNH CHÍNH, CHỌN ẢNH CHÍNH MỚI.
-                //
-                // Đầu tiên, đặt tất cả ảnh còn lại thành ảnh phụ.
-                // Sau đó dùng câu SQL có truy vấn con để chọn
-                // ảnh có SortOrder nhỏ nhất làm ảnh chính.
-                //
-                // Nếu không còn ảnh, câu UPDATE thứ hai
-                // không tác động bản ghi nào. Đây là trạng thái hợp lệ.
 
                 if ($wasPrimary === 1) {
 
@@ -238,9 +262,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $stmtResetRemainingImages->execute();
                     $stmtResetRemainingImages->close();
-
-                    // BƯỚC 8: CHỌN ẢNH CÒN LẠI ĐẦU TIÊN
-                    // LÀM ẢNH CHÍNH MỚI.
 
                     $sqlSetNewPrimary = "
                         UPDATE product_images
@@ -271,8 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // 4. CHUẨN HÓA LẠI SORTORDER.
-                // Sắp xếp ảnh còn lại theo thứ tự cũ,
-                // sau đó đánh lại thứ tự từ 1.
+                // Đánh lại thứ tự ảnh còn lại từ 1.
 
                 $sqlRemainingImages = "
                     SELECT ProductImageID
@@ -342,9 +362,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $filePath = $uploadDirectory . $imageFile;
 
                 if (is_file($filePath) && !unlink($filePath)) {
-                    // Bản ghi đã xóa nhưng file vẫn còn.
                     header(
-                        'Location: /products/edit.php?id='
+                        'Location: /admin/products/edit.php?id='
                         . $productID
                         . '&image_delete_file_error=1'
                     );
@@ -352,7 +371,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 header(
-                    'Location: /products/edit.php?id='
+                    'Location: /admin/products/edit.php?id='
                     . $productID
                     . '&image_deleted=1'
                 );
@@ -412,6 +431,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $finfo = new finfo(FILEINFO_MIME_TYPE);
 
             // Kiểm tra từng tập tin trước khi lưu.
+
             for ($i = 0; $i < $fileCount; $i++) {
 
                 if ($files['error'][$i] === UPLOAD_ERR_NO_FILE) {
@@ -462,6 +482,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Xác định thứ tự ảnh và trạng thái ảnh chính.
+
             if ($error === '') {
 
                 $sqlImageState = "
@@ -571,7 +592,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $transactionStarted = false;
 
                     header(
-                        'Location: /products/edit.php?id='
+                        'Location: /admin/products/edit.php?id='
                         . $productID
                         . '&images_added=1'
                     );
@@ -695,7 +716,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stmt->execute()) {
                     $stmt->close();
 
-                    header('Location: /products/');
+                    header('Location: /admin/products/');
                     exit;
                 }
 
@@ -773,8 +794,8 @@ $suppliers = $conn->query($sqlSuppliers);
 // 7. HIỂN THỊ GIAO DIỆN
 // ========================================
 
-require_once '/var/www/src/includes/header.php';
-require_once '/var/www/src/includes/navbar.php';
+require_once '/var/www/src/includes/admin/header.php';
+require_once '/var/www/src/includes/admin/navbar.php';
 ?>
 
 <div class="container mt-4 mb-5">
@@ -821,7 +842,7 @@ require_once '/var/www/src/includes/navbar.php';
         <div class="alert alert-warning">
             Bản ghi ảnh đã được xóa khỏi cơ sở dữ liệu,
             nhưng chưa xóa được file vật lý.
-            Bà hãy kiểm tra thư mục uploads/products.
+            Vui lòng kiểm tra thư mục uploads/products.
         </div>
     <?php endif; ?>
 
@@ -887,7 +908,7 @@ require_once '/var/www/src/includes/navbar.php';
 
                                 <form
                                     method="POST"
-                                    action="/products/edit.php?id=<?= $productID ?>"
+                                    action="/admin/products/edit.php?id=<?= $productID ?>"
                                     class="mt-3"
                                 >
                                     <button
@@ -906,7 +927,7 @@ require_once '/var/www/src/includes/navbar.php';
 
                             <form
                                 method="POST"
-                                action="/products/edit.php?id=<?= $productID ?>"
+                                action="/admin/products/edit.php?id=<?= $productID ?>"
                                 class="mt-2"
                                 onsubmit="return confirm('Bạn có chắc muốn xóa ảnh này?');"
                             >
@@ -941,7 +962,7 @@ require_once '/var/www/src/includes/navbar.php';
 
     <form
         method="POST"
-        action="/products/edit.php?id=<?= $productID ?>"
+        action="/admin/products/edit.php?id=<?= $productID ?>"
         enctype="multipart/form-data"
     >
 
@@ -986,7 +1007,7 @@ require_once '/var/www/src/includes/navbar.php';
 
     <form
         method="POST"
-        action="/products/edit.php?id=<?= $productID ?>"
+        action="/admin/products/edit.php?id=<?= $productID ?>"
     >
 
         <div class="mb-3">
@@ -1190,7 +1211,7 @@ require_once '/var/www/src/includes/navbar.php';
             Lưu thay đổi
         </button>
 
-        <a href="/products/" class="btn btn-secondary">
+        <a href="/admin/products/" class="btn btn-secondary">
             Hủy
         </a>
 
@@ -1201,6 +1222,5 @@ require_once '/var/www/src/includes/navbar.php';
 <?php
 $stmtImages->close();
 
-require_once '/var/www/src/includes/footer.php';
+require_once '/var/www/src/includes/admin/footer.php';
 ?>
-```
