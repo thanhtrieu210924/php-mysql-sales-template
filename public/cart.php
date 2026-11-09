@@ -27,11 +27,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $productID = (int) $productID;
                 $quantity = (int) $quantity;
 
-                if ($productID <= 0
+                if (
+                    $productID <= 0
                     || !array_key_exists(
                         $productID,
                         $_SESSION['cart']
-                    )) {
+                    )
+                ) {
                     continue;
                 }
 
@@ -67,8 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
-                $stockQuantity =
-                    (int) $stockRow['StockQuantity'];
+                $stockQuantity = (int) $stockRow['StockQuantity'];
 
                 if ($stockQuantity <= 0) {
                     unset($_SESSION['cart'][$productID]);
@@ -180,8 +181,7 @@ if (!empty($cart)) {
             $_SESSION['cart'][$productID] = $quantity;
         }
 
-        $subtotal =
-            (float) $product['Price'] * $quantity;
+        $subtotal = (float) $product['Price'] * $quantity;
 
         $product['Quantity'] = $quantity;
         $product['Subtotal'] = $subtotal;
@@ -411,13 +411,20 @@ require_once '/var/www/src/includes/frontend/navbar.php';
 
         </form>
 
-        <div class="mt-4">
+        <div class="mt-4 d-flex flex-wrap gap-2">
 
             <a
                 href="/products.php"
                 class="btn btn-outline-secondary"
             >
                 Tiếp tục mua hàng
+            </a>
+
+            <a
+                href="/checkout.php"
+                class="btn btn-success"
+            >
+                Tiến hành đặt hàng
             </a>
 
         </div>
