@@ -1,10 +1,10 @@
-
 <?php
 
 // ============================================
-// MỤC 9: KẾT NỐI DATABASE VÀ NHẬN PRODUCT ID
+// KHỞI TẠO SESSION VÀ KẾT NỐI DATABASE
 // ============================================
 
+require_once '/var/www/src/config/session.php';
 require_once '/var/www/src/config/database.php';
 
 $productID = isset($_GET['id'])
@@ -18,7 +18,7 @@ if ($productID <= 0) {
 
 
 // ============================================
-// MỤC 10: TRUY VẤN THÔNG TIN CHI TIẾT SẢN PHẨM
+// TRUY VẤN THÔNG TIN CHI TIẾT SẢN PHẨM
 // ============================================
 
 $sql = "
@@ -51,12 +51,11 @@ if (!$stmt) {
     die('Lỗi chuẩn bị truy vấn sản phẩm: ' . $conn->error);
 }
 
-$stmt->bind_param(
-    'i',
-    $productID
-);
+$stmt->bind_param('i', $productID);
 
-$stmt->execute();
+if (!$stmt->execute()) {
+    die('Lỗi truy vấn sản phẩm: ' . $stmt->error);
+}
 
 $result = $stmt->get_result();
 
@@ -72,7 +71,55 @@ if (!$product) {
 
 
 // ============================================
-// MỤC 11: LẤY DANH SÁCH HÌNH ẢNH SẢN PHẨM
+// XỬ LÝ THÊM SẢN PHẨM VÀO GIỎ HÀNG
+// ============================================
+
+$cartMessage = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST'
+    && isset($_POST['add_to_cart'])) {
+
+    $quantity = isset($_POST['quantity'])
+        ? (int) $_POST['quantity']
+        : 1;
+
+    if ($quantity < 1) {
+        $quantity = 1;
+    }
+
+    $stockQuantity = (int) $product['StockQuantity'];
+
+    if ($stockQuantity <= 0) {
+
+        $cartMessage = 'Sản phẩm hiện đã hết hàng.';
+
+    } else {
+
+        if (!isset($_SESSION['cart'])
+            || !is_array($_SESSION['cart'])) {
+            $_SESSION['cart'] = [];
+        }
+
+        $currentQuantity =
+            (int) ($_SESSION['cart'][$productID] ?? 0);
+
+        $newQuantity =
+            $currentQuantity + $quantity;
+
+        if ($newQuantity > $stockQuantity) {
+            $newQuantity = $stockQuantity;
+        }
+
+        $_SESSION['cart'][$productID] = $newQuantity;
+
+        $cartMessage =
+            'Đã thêm sản phẩm vào giỏ hàng.';
+    }
+}
+
+
+// ============================================
+// LẤY DANH SÁCH HÌNH ẢNH SẢN PHẨM
 // ============================================
 
 $sqlImages = "
@@ -99,12 +146,11 @@ if (!$stmtImages) {
     die('Lỗi chuẩn bị truy vấn hình ảnh: ' . $conn->error);
 }
 
-$stmtImages->bind_param(
-    'i',
-    $productID
-);
+$stmtImages->bind_param('i', $productID);
 
-$stmtImages->execute();
+if (!$stmtImages->execute()) {
+    die('Lỗi truy vấn hình ảnh: ' . $stmtImages->error);
+}
 
 $imageResult = $stmtImages->get_result();
 
@@ -129,10 +175,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
 
 ?>
 
-<!-- ==========================================
-     MỤC 12: HIỂN THỊ CHI TIẾT SẢN PHẨM
-=========================================== -->
-
 <main class="container py-5">
 
     <div class="mb-4">
@@ -153,8 +195,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
         <div class="col-lg-6">
 
             <?php if (!empty($images)): ?>
-
-                <!-- Ảnh chính -->
 
                 <div
                     class="bg-light d-flex
@@ -183,8 +223,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
                     >
 
                 </div>
-
-                <!-- Các ảnh phụ -->
 
                 <?php if (count($images) > 1): ?>
 
@@ -314,7 +352,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
 
                 </dd>
 
-
                 <dt class="col-sm-4">
                     Nhà cung cấp
                 </dt>
@@ -328,7 +365,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
                     ) ?>
 
                 </dd>
-
 
                 <dt class="col-sm-4">
                     Đơn vị tính
@@ -344,7 +380,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
 
                 </dd>
 
-
                 <dt class="col-sm-4">
                     Tồn kho
                 </dt>
@@ -356,6 +391,73 @@ require_once '/var/www/src/includes/frontend/navbar.php';
                 </dd>
 
             </dl>
+
+
+            <!-- GIAO DIỆN THÊM VÀO GIỎ HÀNG -->
+
+            <?php if ($cartMessage !== ''): ?>
+
+                <div class="alert alert-info">
+                    <?= htmlspecialchars(
+                        $cartMessage,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>
+                </div>
+
+            <?php endif; ?>
+
+            <?php if ((int) $product['StockQuantity'] > 0): ?>
+
+                <form method="post" class="mb-4">
+
+                    <div class="row g-3 align-items-end">
+
+                        <div class="col-auto">
+
+                            <label
+                                for="quantity"
+                                class="form-label"
+                            >
+                                Số lượng
+                            </label>
+
+                            <input
+                                type="number"
+                                name="quantity"
+                                id="quantity"
+                                class="form-control"
+                                value="1"
+                                min="1"
+                                max="<?= (int) $product['StockQuantity'] ?>"
+                                style="width: 100px;"
+                            >
+
+                        </div>
+
+                        <div class="col-auto">
+
+                            <button
+                                type="submit"
+                                name="add_to_cart"
+                                class="btn btn-primary"
+                            >
+                                Thêm vào giỏ hàng
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </form>
+
+            <?php else: ?>
+
+                <div class="alert alert-warning">
+                    Sản phẩm hiện đã hết hàng.
+                </div>
+
+            <?php endif; ?>
 
 
             <!-- MÔ TẢ SẢN PHẨM -->
@@ -386,10 +488,7 @@ require_once '/var/www/src/includes/frontend/navbar.php';
 
 </main>
 
-
 <?php
-
-// NẠP FOOTER FRONTEND
 
 require_once '/var/www/src/includes/frontend/footer.php';
 

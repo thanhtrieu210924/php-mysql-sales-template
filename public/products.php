@@ -1,6 +1,6 @@
-
 <?php
 
+require_once '/var/www/src/config/session.php';
 require_once '/var/www/src/config/database.php';
 
 /*
@@ -319,8 +319,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
 
 <main class="container py-5">
 
-    <!-- Tiêu đề trang -->
-
     <div class="mb-4">
 
         <h1>Sản phẩm</h1>
@@ -330,8 +328,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
         </p>
 
     </div>
-
-    <!-- Form tìm kiếm và lọc danh mục -->
 
     <form
         method="get"
@@ -423,8 +419,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
 
     </form>
 
-    <!-- Số lượng sản phẩm tìm được -->
-
     <p class="text-muted">
 
         Tìm thấy
@@ -432,8 +426,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
         sản phẩm.
 
     </p>
-
-    <!-- Danh sách Card sản phẩm -->
 
     <?php if ($result->num_rows > 0): ?>
 
@@ -561,8 +553,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
 
     <?php endif; ?>
 
-    <!-- Phân trang -->
-
     <?php if ($totalPages > 1): ?>
 
         <nav
@@ -575,8 +565,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
                        justify-content-center
                        flex-wrap"
             >
-
-                <!-- Nút Trước -->
 
                 <?php
 
@@ -606,8 +594,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
                     </a>
 
                 </li>
-
-                <!-- Các số trang -->
 
                 <?php for (
                     $pageNumber = 1;
@@ -645,8 +631,6 @@ require_once '/var/www/src/includes/frontend/navbar.php';
                     </li>
 
                 <?php endfor; ?>
-
-                <!-- Nút Sau -->
 
                 <?php
 
