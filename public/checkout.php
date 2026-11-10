@@ -43,13 +43,72 @@ $pageTitle = 'Thanh toán';
 
 $checkoutError = '';
 
-$customerName = trim($_POST['customer_name'] ?? '');
-$phone = trim($_POST['phone'] ?? '');
-$address = trim($_POST['address'] ?? '');
+$isLoggedIn = isset($_SESSION['customer_id']);
+
+$customerID = null;
+$customerName = '';
+$email = '';
+$phone = '';
+$address = '';
 
 $checkoutItems = [];
 $totalAmountCents = 0;
 $checkoutReady = true;
+
+
+// ============================================
+// LẤY THÔNG TIN KHÁCH HÀNG ĐĂNG NHẬP
+// ============================================
+
+if ($isLoggedIn) {
+
+    $customerID = (int) $_SESSION['customer_id'];
+
+    $sqlCustomer = "
+        SELECT
+            CustomerID,
+            CustomerName,
+            Email,
+            Phone,
+            Address
+        FROM customers
+        WHERE CustomerID = ?
+          AND Email IS NOT NULL
+        LIMIT 1
+    ";
+
+    $stmtCustomer = $conn->prepare($sqlCustomer);
+
+    $stmtCustomer->bind_param('i', $customerID);
+    $stmtCustomer->execute();
+
+    $resultCustomer = $stmtCustomer->get_result();
+
+    $customer = $resultCustomer->fetch_assoc();
+
+    $resultCustomer->free();
+    $stmtCustomer->close();
+
+    // Nếu tài khoản không còn hợp lệ, xóa trạng thái đăng nhập.
+
+    if (!$customer) {
+
+        unset($_SESSION['customer_id']);
+        unset($_SESSION['customer_name']);
+
+        header('Location: /login.php');
+        exit;
+    }
+
+    $customerName = $customer['CustomerName'];
+    $email = $customer['Email'];
+    $phone = $customer['Phone'] ?? '';
+    $address = $customer['Address'] ?? '';
+
+    // Lấy tên khách hàng từ database, không phụ thuộc Session.
+
+    $_SESSION['customer_name'] = $customerName;
+}
 
 
 // ============================================
@@ -58,12 +117,33 @@ $checkoutReady = true;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    if ($customerName === '' || $phone === '' || $address === '') {
+    if ($isLoggedIn) {
+
+        // Khách đăng nhập chỉ được cập nhật Phone và Address.
+
+        $phone = trim($_POST['phone'] ?? '');
+        $address = trim($_POST['address'] ?? '');
+
+    } else {
+
+        // Khách vãng lai tự nhập thông tin.
+
+        $customerName = trim($_POST['customer_name'] ?? '');
+        $phone = trim($_POST['phone'] ?? '');
+        $address = trim($_POST['address'] ?? '');
+    }
+
+
+    if (
+        $customerName === ''
+        || $phone === ''
+        || $address === ''
+    ) {
 
         $checkoutError = 'Vui lòng nhập đầy đủ thông tin khách hàng.';
 
     } elseif (
-        strlen($customerName) > 200
+        strlen($customerName) > 100
         || strlen($phone) > 20
         || strlen($address) > 200
     ) {
@@ -89,6 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lockedItems = [];
             $totalAmountCents = 0;
 
+
             // ============================================
             // KIỂM TRA VÀ KHÓA TỒN KHO
             // ============================================
@@ -109,10 +190,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ";
 
                 $stmtProduct = $conn->prepare($sqlProduct);
+
                 $stmtProduct->bind_param('i', $productID);
                 $stmtProduct->execute();
 
                 $resultProduct = $stmtProduct->get_result();
+
                 $product = $resultProduct->fetch_assoc();
 
                 $resultProduct->free();
@@ -153,32 +236,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
             // ============================================
-            // TẠO KHÁCH HÀNG
+            // XỬ LÝ KHÁCH HÀNG
             // ============================================
 
-            $sqlCustomer = "
-                INSERT INTO customers (
-                    CustomerName,
-                    Phone,
-                    Address
-                )
-                VALUES (?, ?, ?)
-            ";
+            if ($isLoggedIn) {
 
-            $stmtCustomer = $conn->prepare($sqlCustomer);
+                // Khách đăng nhập: khóa bản ghi khách hàng hiện tại.
 
-            $stmtCustomer->bind_param(
-                'sss',
-                $customerName,
-                $phone,
-                $address
-            );
+                $sqlCustomer = "
+                    SELECT CustomerID
+                    FROM customers
+                    WHERE CustomerID = ?
+                      AND Email IS NOT NULL
+                    FOR UPDATE
+                ";
 
-            $stmtCustomer->execute();
+                $stmtCustomer = $conn->prepare($sqlCustomer);
 
-            $customerID = $conn->insert_id;
+                $stmtCustomer->bind_param('i', $customerID);
+                $stmtCustomer->execute();
 
-            $stmtCustomer->close();
+                $resultCustomer = $stmtCustomer->get_result();
+
+                $existingCustomer = $resultCustomer->fetch_assoc();
+
+                $resultCustomer->free();
+                $stmtCustomer->close();
+
+                if (!$existingCustomer) {
+                    throw new RuntimeException(
+                        'Tài khoản khách hàng không còn hợp lệ. '
+                        . 'Vui lòng đăng nhập lại.'
+                    );
+                }
+
+                // Cập nhật số điện thoại và địa chỉ.
+
+                $sqlUpdateCustomer = "
+                    UPDATE customers
+                    SET Phone = ?,
+                        Address = ?
+                    WHERE CustomerID = ?
+                ";
+
+                $stmtUpdateCustomer = $conn->prepare(
+                    $sqlUpdateCustomer
+                );
+
+                $stmtUpdateCustomer->bind_param(
+                    'ssi',
+                    $phone,
+                    $address,
+                    $customerID
+                );
+
+                $stmtUpdateCustomer->execute();
+                $stmtUpdateCustomer->close();
+
+                // Giữ nguyên CustomerID của tài khoản.
+
+            } else {
+
+                // Khách vãng lai: tạo customer mới như HO12.
+
+                $sqlCustomer = "
+                    INSERT INTO customers (
+                        CustomerName,
+                        Phone,
+                        Address
+                    )
+                    VALUES (?, ?, ?)
+                ";
+
+                $stmtCustomer = $conn->prepare($sqlCustomer);
+
+                $stmtCustomer->bind_param(
+                    'sss',
+                    $customerName,
+                    $phone,
+                    $address
+                );
+
+                $stmtCustomer->execute();
+
+                $customerID = $conn->insert_id;
+
+                $stmtCustomer->close();
+            }
 
 
             // ============================================
@@ -362,6 +506,7 @@ foreach ($cart as $productID => $quantity) {
     $stmt->execute();
 
     $result = $stmt->get_result();
+
     $product = $result->fetch_assoc();
 
     $result->free();
@@ -465,30 +610,82 @@ require_once '/var/www/src/includes/frontend/navbar.php';
                             action="/checkout.php"
                         >
 
-                            <div class="mb-3">
+                            <?php if ($isLoggedIn): ?>
 
-                                <label
-                                    for="customer_name"
-                                    class="form-label"
-                                >
-                                    Họ và tên
-                                </label>
+                                <div class="mb-3">
 
-                                <input
-                                    type="text"
-                                    id="customer_name"
-                                    name="customer_name"
-                                    class="form-control"
-                                    maxlength="200"
-                                    value="<?= htmlspecialchars(
-                                        $customerName,
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>"
-                                    required
-                                >
+                                    <label
+                                        for="customer_name"
+                                        class="form-label"
+                                    >
+                                        Họ và tên
+                                    </label>
 
-                            </div>
+                                    <input
+                                        type="text"
+                                        id="customer_name"
+                                        class="form-control"
+                                        value="<?= htmlspecialchars(
+                                            $customerName,
+                                            ENT_QUOTES,
+                                            'UTF-8'
+                                        ) ?>"
+                                        readonly
+                                    >
+
+                                </div>
+
+                                <div class="mb-3">
+
+                                    <label
+                                        for="email"
+                                        class="form-label"
+                                    >
+                                        Email
+                                    </label>
+
+                                    <input
+                                        type="email"
+                                        id="email"
+                                        class="form-control"
+                                        value="<?= htmlspecialchars(
+                                            $email,
+                                            ENT_QUOTES,
+                                            'UTF-8'
+                                        ) ?>"
+                                        readonly
+                                    >
+
+                                </div>
+
+                            <?php else: ?>
+
+                                <div class="mb-3">
+
+                                    <label
+                                        for="customer_name"
+                                        class="form-label"
+                                    >
+                                        Họ và tên
+                                    </label>
+
+                                    <input
+                                        type="text"
+                                        id="customer_name"
+                                        name="customer_name"
+                                        class="form-control"
+                                        maxlength="100"
+                                        value="<?= htmlspecialchars(
+                                            $customerName,
+                                            ENT_QUOTES,
+                                            'UTF-8'
+                                        ) ?>"
+                                        required
+                                    >
+
+                                </div>
+
+                            <?php endif; ?>
 
 
                             <div class="mb-3">

@@ -6,6 +6,10 @@ $cartCount = is_array($cart)
     ? array_sum($cart)
     : 0;
 
+$isLoggedIn = isset($_SESSION['customer_id']);
+
+$customerName = $_SESSION['customer_name'] ?? '';
+
 ?>
 
 <nav class="navbar navbar-expand-lg bg-dark navbar-dark">
@@ -49,7 +53,7 @@ $cartCount = is_array($cart)
 
             </ul>
 
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 align-items-center flex-wrap">
 
                 <a
                     class="btn btn-outline-light btn-sm"
@@ -64,6 +68,38 @@ $cartCount = is_array($cart)
                 >
                     Quản trị
                 </a>
+
+                <?php if ($isLoggedIn): ?>
+
+                    <span class="text-white">
+                        Xin chào,
+                        <?= htmlspecialchars($customerName) ?>
+                    </span>
+
+                    <a
+                        class="btn btn-outline-warning btn-sm"
+                        href="/logout.php"
+                    >
+                        Đăng xuất
+                    </a>
+
+                <?php else: ?>
+
+                    <a
+                        class="btn btn-outline-light btn-sm"
+                        href="/register.php"
+                    >
+                        Đăng ký
+                    </a>
+
+                    <a
+                        class="btn btn-outline-light btn-sm"
+                        href="/login.php"
+                    >
+                        Đăng nhập
+                    </a>
+
+                <?php endif; ?>
 
             </div>
 
