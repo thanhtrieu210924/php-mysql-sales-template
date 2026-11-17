@@ -12,14 +12,25 @@ $customerName = $_SESSION['customer_name'] ?? '';
 
 ?>
 
-<nav class="navbar navbar-expand-lg bg-dark navbar-dark">
+<nav class="navbar navbar-expand-lg navbar-dark site-navbar">
 
     <div class="container">
 
+        <!-- BRAND -->
         <a class="navbar-brand" href="/">
-            Sales Management
+
+            <span class="brand-mark">
+                <i class="bi bi-cpu-fill"></i>
+            </span>
+
+            <span class="brand-name">
+                Tech<span>Store</span>
+            </span>
+
         </a>
 
+
+        <!-- MOBILE TOGGLER -->
         <button
             class="navbar-toggler"
             type="button"
@@ -32,71 +43,99 @@ $customerName = $_SESSION['customer_name'] ?? '';
             <span class="navbar-toggler-icon"></span>
         </button>
 
+
+        <!-- NAVIGATION -->
         <div
             class="collapse navbar-collapse"
             id="frontendNavbar"
         >
 
-            <ul class="navbar-nav me-auto">
+            <ul class="navbar-nav me-auto ms-lg-4">
 
                 <li class="nav-item">
                     <a class="nav-link" href="/">
+                        <i class="bi bi-house-door me-1"></i>
                         Trang chủ
                     </a>
                 </li>
 
                 <li class="nav-item">
                     <a class="nav-link" href="/products.php">
+                        <i class="bi bi-grid me-1"></i>
                         Sản phẩm
                     </a>
                 </li>
 
             </ul>
 
-            <div class="d-flex gap-2 align-items-center flex-wrap">
 
+            <!-- USER ACTIONS -->
+            <div class="d-flex gap-2 align-items-center flex-wrap mt-3 mt-lg-0">
+
+                <!-- CART -->
                 <a
-                    class="btn btn-outline-light btn-sm"
+                    class="nav-action nav-action-primary cart-wrapper"
                     href="/cart.php"
                 >
-                    Giỏ hàng (<?= (int) $cartCount ?>)
+                    <i class="bi bi-cart3"></i>
+                    <span>Giỏ hàng</span>
+
+                    <span class="cart-badge">
+                        <?= (int) $cartCount ?>
+                    </span>
                 </a>
 
+
+                <!-- ADMIN -->
                 <a
-                    class="btn btn-outline-light btn-sm"
+                    class="nav-action"
                     href="/admin/"
                 >
-                    Quản trị
+                    <i class="bi bi-speedometer2"></i>
+                    <span>Quản trị</span>
                 </a>
+
 
                 <?php if ($isLoggedIn): ?>
 
-                    <span class="text-white">
-                        Xin chào,
-                        <?= htmlspecialchars($customerName) ?>
+                    <!-- CUSTOMER -->
+                    <span class="nav-action">
+                        <i class="bi bi-person-circle"></i>
+
+                        <?= htmlspecialchars(
+                            $customerName,
+                            ENT_QUOTES,
+                            'UTF-8'
+                        ) ?>
                     </span>
 
+                    <!-- LOGOUT -->
                     <a
-                        class="btn btn-outline-warning btn-sm"
+                        class="nav-action"
                         href="/logout.php"
                     >
-                        Đăng xuất
+                        <i class="bi bi-box-arrow-right"></i>
+                        <span>Đăng xuất</span>
                     </a>
 
                 <?php else: ?>
 
+                    <!-- REGISTER -->
                     <a
-                        class="btn btn-outline-light btn-sm"
+                        class="nav-action"
                         href="/register.php"
                     >
-                        Đăng ký
+                        <i class="bi bi-person-plus"></i>
+                        <span>Đăng ký</span>
                     </a>
 
+                    <!-- LOGIN -->
                     <a
-                        class="btn btn-outline-light btn-sm"
+                        class="nav-action"
                         href="/login.php"
                     >
-                        Đăng nhập
+                        <i class="bi bi-box-arrow-in-right"></i>
+                        <span>Đăng nhập</span>
                     </a>
 
                 <?php endif; ?>

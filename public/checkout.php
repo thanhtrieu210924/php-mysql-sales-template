@@ -6,6 +6,10 @@ mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 require_once '/var/www/src/config/database.php';
 
+function checkout_e($value): string
+{
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
 
 // ============================================
 // KIỂM TRA GIỎ HÀNG
@@ -18,7 +22,6 @@ if (!isset($_SESSION['cart']) || !is_array($_SESSION['cart'])) {
 $cart = [];
 
 foreach ($_SESSION['cart'] as $productID => $quantity) {
-
     $productID = (int) $productID;
     $quantity = (int) $quantity;
 
@@ -33,7 +36,6 @@ if (empty($cart)) {
     header('Location: /cart.php');
     exit;
 }
-
 
 // ============================================
 // KHỞI TẠO DỮ LIỆU
@@ -55,13 +57,11 @@ $checkoutItems = [];
 $totalAmountCents = 0;
 $checkoutReady = true;
 
-
 // ============================================
 // LẤY THÔNG TIN KHÁCH HÀNG ĐĂNG NHẬP
 // ============================================
 
 if ($isLoggedIn) {
-
     $customerID = (int) $_SESSION['customer_id'];
 
     $sqlCustomer = "
@@ -78,21 +78,16 @@ if ($isLoggedIn) {
     ";
 
     $stmtCustomer = $conn->prepare($sqlCustomer);
-
     $stmtCustomer->bind_param('i', $customerID);
     $stmtCustomer->execute();
 
     $resultCustomer = $stmtCustomer->get_result();
-
     $customer = $resultCustomer->fetch_assoc();
 
     $resultCustomer->free();
     $stmtCustomer->close();
 
-    // Nếu tài khoản không còn hợp lệ, xóa trạng thái đăng nhập.
-
     if (!$customer) {
-
         unset($_SESSION['customer_id']);
         unset($_SESSION['customer_name']);
 
@@ -105,77 +100,55 @@ if ($isLoggedIn) {
     $phone = $customer['Phone'] ?? '';
     $address = $customer['Address'] ?? '';
 
-    // Lấy tên khách hàng từ database, không phụ thuộc Session.
-
     $_SESSION['customer_name'] = $customerName;
 }
-
 
 // ============================================
 // XỬ LÝ ĐẶT HÀNG
 // ============================================
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
     if ($isLoggedIn) {
-
-        // Khách đăng nhập chỉ được cập nhật Phone và Address.
-
         $phone = trim($_POST['phone'] ?? '');
         $address = trim($_POST['address'] ?? '');
-
     } else {
-
-        // Khách vãng lai tự nhập thông tin.
-
         $customerName = trim($_POST['customer_name'] ?? '');
         $phone = trim($_POST['phone'] ?? '');
         $address = trim($_POST['address'] ?? '');
     }
-
 
     if (
         $customerName === ''
         || $phone === ''
         || $address === ''
     ) {
-
         $checkoutError = 'Vui lòng nhập đầy đủ thông tin khách hàng.';
-
     } elseif (
         strlen($customerName) > 100
         || strlen($phone) > 20
         || strlen($address) > 200
     ) {
-
         $checkoutError = 'Thông tin khách hàng vượt quá độ dài cho phép.';
-
     } else {
-
         $transactionStarted = false;
 
         try {
-
             // Bắt đầu transaction.
-
             $conn->begin_transaction();
             $transactionStarted = true;
 
             // Sắp xếp ProductID để khóa sản phẩm theo thứ tự nhất quán.
-
             $cartForCheckout = $cart;
             ksort($cartForCheckout, SORT_NUMERIC);
 
             $lockedItems = [];
             $totalAmountCents = 0;
 
-
             // ============================================
             // KIỂM TRA VÀ KHÓA TỒN KHO
             // ============================================
 
             foreach ($cartForCheckout as $productID => $quantity) {
-
                 $sqlProduct = "
                     SELECT
                         ProductID,
@@ -190,12 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ";
 
                 $stmtProduct = $conn->prepare($sqlProduct);
-
                 $stmtProduct->bind_param('i', $productID);
                 $stmtProduct->execute();
 
                 $resultProduct = $stmtProduct->get_result();
-
                 $product = $resultProduct->fetch_assoc();
 
                 $resultProduct->free();
@@ -219,7 +190,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Tính tiền bằng đơn vị xu để hạn chế sai số số thực.
-
                 $unitPriceCents = (int) round(
                     (float) $product['Price'] * 100
                 );
@@ -234,15 +204,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $lockedItems[] = $product;
             }
 
-
             // ============================================
             // XỬ LÝ KHÁCH HÀNG
             // ============================================
 
             if ($isLoggedIn) {
-
                 // Khách đăng nhập: khóa bản ghi khách hàng hiện tại.
-
                 $sqlCustomer = "
                     SELECT CustomerID
                     FROM customers
@@ -252,12 +219,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ";
 
                 $stmtCustomer = $conn->prepare($sqlCustomer);
-
                 $stmtCustomer->bind_param('i', $customerID);
                 $stmtCustomer->execute();
 
                 $resultCustomer = $stmtCustomer->get_result();
-
                 $existingCustomer = $resultCustomer->fetch_assoc();
 
                 $resultCustomer->free();
@@ -271,7 +236,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Cập nhật số điện thoại và địa chỉ.
-
                 $sqlUpdateCustomer = "
                     UPDATE customers
                     SET Phone = ?,
@@ -292,13 +256,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $stmtUpdateCustomer->execute();
                 $stmtUpdateCustomer->close();
-
-                // Giữ nguyên CustomerID của tài khoản.
-
             } else {
-
                 // Khách vãng lai: tạo customer mới như HO12.
-
                 $sqlCustomer = "
                     INSERT INTO customers (
                         CustomerName,
@@ -323,7 +282,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $stmtCustomer->close();
             }
-
 
             // ============================================
             // TẠO ĐƠN HÀNG
@@ -362,7 +320,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmtOrder->close();
 
-
             // ============================================
             // TẠO CHI TIẾT ĐƠN HÀNG
             // VÀ CẬP NHẬT TỒN KHO
@@ -380,7 +337,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmtDetail = $conn->prepare($sqlDetail);
 
-
             $sqlUpdateStock = "
                 UPDATE products
                 SET StockQuantity = StockQuantity - ?
@@ -391,15 +347,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmtUpdateStock = $conn->prepare($sqlUpdateStock);
 
-
             foreach ($lockedItems as $item) {
-
                 $quantity = (int) $item['Quantity'];
                 $unitPrice = (string) $item['Price'];
                 $productID = (int) $item['ProductID'];
 
                 // Lưu đơn giá tại thời điểm đặt hàng.
-
                 $stmtDetail->bind_param(
                     'isii',
                     $quantity,
@@ -410,9 +363,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $stmtDetail->execute();
 
-
                 // Trừ tồn kho.
-
                 $stmtUpdateStock->bind_param(
                     'iii',
                     $quantity,
@@ -433,7 +384,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtDetail->close();
             $stmtUpdateStock->close();
 
-
             // ============================================
             // HOÀN TẤT TRANSACTION
             // ============================================
@@ -442,7 +392,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $transactionStarted = false;
 
             // Chỉ xóa giỏ hàng sau khi COMMIT thành công.
-
             $_SESSION['cart'] = [];
 
             header(
@@ -450,9 +399,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
 
             exit;
-
         } catch (Throwable $e) {
-
             if ($transactionStarted) {
                 try {
                     $conn->rollback();
@@ -479,7 +426,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-
 // ============================================
 // LẤY LẠI SẢN PHẨM ĐỂ HIỂN THỊ
 // ============================================
@@ -487,7 +433,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $totalAmountCents = 0;
 
 foreach ($cart as $productID => $quantity) {
-
     $sql = "
         SELECT
             ProductID,
@@ -506,14 +451,12 @@ foreach ($cart as $productID => $quantity) {
     $stmt->execute();
 
     $result = $stmt->get_result();
-
     $product = $result->fetch_assoc();
 
     $result->free();
     $stmt->close();
 
     if (!$product) {
-
         $checkoutReady = false;
 
         if ($checkoutError === '') {
@@ -528,7 +471,6 @@ foreach ($cart as $productID => $quantity) {
     $stockQuantity = (int) $product['StockQuantity'];
 
     if ($stockQuantity < $quantity) {
-
         $checkoutReady = false;
 
         if ($checkoutError === '') {
@@ -553,7 +495,6 @@ foreach ($cart as $productID => $quantity) {
     $totalAmountCents += $subtotalCents;
 }
 
-
 // ============================================
 // NẠP GIAO DIỆN
 // ============================================
@@ -563,312 +504,325 @@ require_once '/var/www/src/includes/frontend/navbar.php';
 
 ?>
 
-<main class="container py-5">
+<main class="checkout-page">
+    <div class="checkout-container">
 
-    <div class="mb-4">
+        <div class="checkout-heading">
+            <div>
+                <span class="checkout-kicker">SECURE CHECKOUT</span>
+                <h1>Thanh toán đơn hàng</h1>
+                <p>
+                    Kiểm tra thông tin giao hàng và xác nhận đơn hàng
+                    của bạn.
+                </p>
+            </div>
 
-        <h1>Thanh toán</h1>
-
-        <p class="text-muted">
-            Vui lòng kiểm tra thông tin và xác nhận đơn hàng.
-        </p>
-
-    </div>
-
-
-    <?php if ($checkoutError !== ''): ?>
-
-        <div class="alert alert-danger">
-            <?= htmlspecialchars(
-                $checkoutError,
-                ENT_QUOTES,
-                'UTF-8'
-            ) ?>
+            <a href="/cart.php" class="checkout-back-link">
+                <span aria-hidden="true">&larr;</span>
+                Quay lại giỏ hàng
+            </a>
         </div>
 
-    <?php endif; ?>
+        <div class="checkout-progress">
+            <div class="checkout-step checkout-step-completed">
+                <span class="checkout-step-number">&#10003;</span>
+                <span>Giỏ hàng</span>
+            </div>
 
+            <div class="checkout-progress-line checkout-progress-active"></div>
 
-    <?php if (!empty($checkoutItems)): ?>
+            <div class="checkout-step checkout-step-current">
+                <span class="checkout-step-number">2</span>
+                <span>Thanh toán</span>
+            </div>
 
-        <div class="row g-4">
+            <div class="checkout-progress-line"></div>
 
-            <div class="col-lg-7">
+            <div class="checkout-step">
+                <span class="checkout-step-number">3</span>
+                <span>Hoàn tất</span>
+            </div>
+        </div>
 
-                <div class="card">
+        <?php if ($checkoutError !== ''): ?>
+            <div class="checkout-alert" role="alert">
+                <span class="checkout-alert-icon">!</span>
+                <div>
+                    <strong>Không thể tiếp tục thanh toán</strong>
+                    <p><?= checkout_e($checkoutError) ?></p>
+                </div>
+            </div>
+        <?php endif; ?>
 
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            Thông tin khách hàng
-                        </h5>
-                    </div>
+        <?php if (!empty($checkoutItems)): ?>
 
-                    <div class="card-body">
+            <form
+                method="post"
+                action="/checkout.php"
+                class="checkout-layout"
+            >
 
-                        <form
-                            method="post"
-                            action="/checkout.php"
-                        >
+                <section class="checkout-form-column">
 
-                            <?php if ($isLoggedIn): ?>
+                    <div class="checkout-card">
+                        <div class="checkout-card-heading">
+                            <div class="checkout-card-icon">
+                                <span aria-hidden="true">&#128100;</span>
+                            </div>
 
-                                <div class="mb-3">
+                            <div>
+                                <h2>Thông tin khách hàng</h2>
+                                <p>
+                                    Thông tin cần thiết để xử lý đơn hàng
+                                </p>
+                            </div>
+                        </div>
 
-                                    <label
-                                        for="customer_name"
-                                        class="form-label"
-                                    >
-                                        Họ và tên
-                                    </label>
+                        <?php if ($isLoggedIn): ?>
 
-                                    <input
-                                        type="text"
-                                        id="customer_name"
-                                        class="form-control"
-                                        value="<?= htmlspecialchars(
-                                            $customerName,
-                                            ENT_QUOTES,
-                                            'UTF-8'
-                                        ) ?>"
-                                        readonly
-                                    >
+                            <div class="checkout-account-note">
+                                <span aria-hidden="true">&#10003;</span>
+                                Bạn đang đặt hàng bằng tài khoản đã đăng nhập.
+                            </div>
 
-                                </div>
-
-                                <div class="mb-3">
-
-                                    <label
-                                        for="email"
-                                        class="form-label"
-                                    >
-                                        Email
-                                    </label>
-
-                                    <input
-                                        type="email"
-                                        id="email"
-                                        class="form-control"
-                                        value="<?= htmlspecialchars(
-                                            $email,
-                                            ENT_QUOTES,
-                                            'UTF-8'
-                                        ) ?>"
-                                        readonly
-                                    >
-
-                                </div>
-
-                            <?php else: ?>
-
-                                <div class="mb-3">
-
-                                    <label
-                                        for="customer_name"
-                                        class="form-label"
-                                    >
-                                        Họ và tên
-                                    </label>
-
-                                    <input
-                                        type="text"
-                                        id="customer_name"
-                                        name="customer_name"
-                                        class="form-control"
-                                        maxlength="100"
-                                        value="<?= htmlspecialchars(
-                                            $customerName,
-                                            ENT_QUOTES,
-                                            'UTF-8'
-                                        ) ?>"
-                                        required
-                                    >
-
-                                </div>
-
-                            <?php endif; ?>
-
-
-                            <div class="mb-3">
-
-                                <label
-                                    for="phone"
-                                    class="form-label"
-                                >
-                                    Số điện thoại
+                            <div class="checkout-field">
+                                <label for="customer_name">
+                                    Họ và tên
                                 </label>
 
                                 <input
-                                    type="tel"
-                                    id="phone"
-                                    name="phone"
-                                    class="form-control"
-                                    maxlength="20"
-                                    value="<?= htmlspecialchars(
-                                        $phone,
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>"
-                                    required
+                                    type="text"
+                                    id="customer_name"
+                                    class="checkout-input checkout-input-readonly"
+                                    value="<?= checkout_e($customerName) ?>"
+                                    readonly
                                 >
-
                             </div>
 
-
-                            <div class="mb-3">
-
-                                <label
-                                    for="address"
-                                    class="form-label"
-                                >
-                                    Địa chỉ
+                            <div class="checkout-field">
+                                <label for="email">
+                                    Email
                                 </label>
 
-                                <textarea
-                                    id="address"
-                                    name="address"
-                                    class="form-control"
-                                    rows="3"
-                                    maxlength="200"
+                                <input
+                                    type="email"
+                                    id="email"
+                                    class="checkout-input checkout-input-readonly"
+                                    value="<?= checkout_e($email) ?>"
+                                    readonly
+                                >
+                            </div>
+
+                        <?php else: ?>
+
+                            <div class="checkout-guest-note">
+                                Bạn đang đặt hàng với tư cách khách vãng lai.
+                            </div>
+
+                            <div class="checkout-field">
+                                <label for="customer_name">
+                                    Họ và tên <span>*</span>
+                                </label>
+
+                                <input
+                                    type="text"
+                                    id="customer_name"
+                                    name="customer_name"
+                                    class="checkout-input"
+                                    maxlength="100"
+                                    placeholder="Nhập họ và tên của bạn"
+                                    value="<?= checkout_e($customerName) ?>"
+                                    autocomplete="name"
                                     required
-                                ><?= htmlspecialchars(
-                                    $address,
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?></textarea>
-
+                                >
                             </div>
 
+                        <?php endif; ?>
 
-                            <div class="d-flex flex-wrap gap-2">
+                        <div class="checkout-field">
+                            <label for="phone">
+                                Số điện thoại <span>*</span>
+                            </label>
 
-                                <a
-                                    href="/cart.php"
-                                    class="btn btn-outline-secondary"
-                                >
-                                    Quay lại giỏ hàng
-                                </a>
+                            <input
+                                type="tel"
+                                id="phone"
+                                name="phone"
+                                class="checkout-input"
+                                maxlength="20"
+                                placeholder="Nhập số điện thoại"
+                                value="<?= checkout_e($phone) ?>"
+                                autocomplete="tel"
+                                required
+                            >
+                        </div>
 
-                                <button
-                                    type="submit"
-                                    class="btn btn-success"
-                                    <?= !$checkoutReady ? 'disabled' : '' ?>
-                                >
-                                    Xác nhận đặt hàng
-                                </button>
+                        <div class="checkout-field">
+                            <label for="address">
+                                Địa chỉ nhận hàng <span>*</span>
+                            </label>
 
+                            <textarea
+                                id="address"
+                                name="address"
+                                class="checkout-input checkout-textarea"
+                                rows="4"
+                                maxlength="200"
+                                placeholder="Nhập địa chỉ nhận hàng đầy đủ"
+                                autocomplete="street-address"
+                                required
+                            ><?= checkout_e($address) ?></textarea>
+                        </div>
+                    </div>
+
+                    <div class="checkout-information-card">
+                        <div class="checkout-information-icon">
+                            <span aria-hidden="true">&#128274;</span>
+                        </div>
+
+                        <div>
+                            <strong>Thông tin đặt hàng an toàn</strong>
+                            <p>
+                                Vui lòng kiểm tra kỹ thông tin trước khi
+                                xác nhận. Đơn hàng sẽ được ghi nhận sau khi
+                                hệ thống xử lý thành công.
+                            </p>
+                        </div>
+                    </div>
+
+                </section>
+
+                <aside class="checkout-summary-column">
+
+                    <div class="checkout-card checkout-summary-card">
+                        <div class="checkout-summary-heading">
+                            <div>
+                                <span class="checkout-summary-kicker">
+                                    ORDER SUMMARY
+                                </span>
+                                <h2>Đơn hàng của bạn</h2>
                             </div>
 
-                        </form>
+                            <span class="checkout-item-count">
+                                <?= count($checkoutItems) ?> sản phẩm
+                            </span>
+                        </div>
 
-                    </div>
+                        <div class="checkout-order-items">
 
-                </div>
+                            <?php foreach ($checkoutItems as $item): ?>
 
-            </div>
+                                <div class="checkout-order-item">
+                                    <div class="checkout-order-product">
+                                        <strong>
+                                            <?= checkout_e($item['ProductName']) ?>
+                                        </strong>
 
+                                        <span>
+                                            <?= (int) $item['Quantity'] ?> x
+                                            <?= number_format(
+                                                (float) $item['Price'],
+                                                0,
+                                                ',',
+                                                '.'
+                                            ) ?> đ
+                                        </span>
+                                    </div>
 
-            <div class="col-lg-5">
-
-                <div class="card">
-
-                    <div class="card-header">
-
-                        <h5 class="mb-0">
-                            Đơn hàng của bạn
-                        </h5>
-
-                    </div>
-
-                    <div class="card-body">
-
-                        <?php foreach ($checkoutItems as $item): ?>
-
-                            <div class="d-flex justify-content-between mb-3">
-
-                                <div>
-
-                                    <strong>
-                                        <?= htmlspecialchars(
-                                            $item['ProductName'],
-                                            ENT_QUOTES,
-                                            'UTF-8'
-                                        ) ?>
-                                    </strong>
-
-                                    <div class="text-muted small">
-
-                                        <?= (int) $item['Quantity'] ?>
-                                        x
+                                    <strong class="checkout-order-price">
                                         <?= number_format(
-                                            (float) $item['Price'],
+                                            $item['SubtotalCents'] / 100,
                                             0,
                                             ',',
                                             '.'
                                         ) ?> đ
-
-                                    </div>
-
+                                    </strong>
                                 </div>
 
-                                <div class="text-end">
+                            <?php endforeach; ?>
 
-                                    <?= number_format(
-                                        $item['SubtotalCents'] / 100,
-                                        0,
-                                        ',',
-                                        '.'
-                                    ) ?> đ
+                        </div>
 
-                                </div>
+                        <div class="checkout-summary-divider"></div>
 
-                            </div>
-
-                        <?php endforeach; ?>
-
-
-                        <hr>
-
-
-                        <div class="d-flex justify-content-between">
-
-                            <strong>Tổng thanh toán</strong>
-
-                            <strong class="text-danger fs-5">
-
+                        <div class="checkout-total-row">
+                            <span>Tạm tính</span>
+                            <strong>
                                 <?= number_format(
                                     $totalAmountCents / 100,
                                     0,
                                     ',',
                                     '.'
                                 ) ?> đ
-
                             </strong>
-
                         </div>
 
+                        <div class="checkout-total-row">
+                            <span>Phí vận chuyển</span>
+                            <strong>Chưa áp dụng</strong>
+                        </div>
+
+                        <div class="checkout-summary-divider"></div>
+
+                        <div class="checkout-grand-total">
+                            <span>Tổng thanh toán</span>
+
+                            <strong>
+                                <?= number_format(
+                                    $totalAmountCents / 100,
+                                    0,
+                                    ',',
+                                    '.'
+                                ) ?> đ
+                            </strong>
+                        </div>
+
+                        <button
+                            type="submit"
+                            class="checkout-submit-button"
+                            <?= !$checkoutReady ? 'disabled' : '' ?>
+                        >
+                            Xác nhận đặt hàng
+                            <span aria-hidden="true">&rarr;</span>
+                        </button>
+
+                        <a href="/cart.php" class="checkout-edit-cart">
+                            Chỉnh sửa giỏ hàng
+                        </a>
+
+                        <div class="checkout-summary-note">
+                            <span aria-hidden="true">&#128274;</span>
+                            Kiểm tra thông tin trước khi xác nhận đơn hàng.
+                        </div>
                     </div>
 
+                </aside>
+
+            </form>
+
+        <?php else: ?>
+
+            <div class="checkout-empty-state">
+                <div class="checkout-empty-icon">
+                    <span aria-hidden="true">&#128722;</span>
                 </div>
 
+                <h2>Chưa có sản phẩm để thanh toán</h2>
+
+                <p>
+                    Giỏ hàng hiện không có sản phẩm hợp lệ.
+                    Vui lòng quay lại giỏ hàng để kiểm tra.
+                </p>
+
+                <a href="/cart.php" class="checkout-submit-button">
+                    Quay lại giỏ hàng
+                    <span aria-hidden="true">&rarr;</span>
+                </a>
             </div>
 
-        </div>
+        <?php endif; ?>
 
-    <?php else: ?>
-
-        <div class="alert alert-warning">
-            Không có sản phẩm hợp lệ để thanh toán.
-        </div>
-
-        <a
-            href="/cart.php"
-            class="btn btn-outline-secondary"
-        >
-            Quay lại giỏ hàng
-        </a>
-
-    <?php endif; ?>
-
+    </div>
 </main>
 
 <?php

@@ -1,26 +1,22 @@
 <?php
 
-// ============================================
-// KHỞI TẠO SESSION VÀ KẾT NỐI DATABASE
-// ============================================
-
 require_once '/var/www/src/config/session.php';
 require_once '/var/www/src/config/database.php';
 
-$productID = isset($_GET['id'])
-    ? (int) $_GET['id']
-    : 0;
+function e($value): string
+{
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+// Lấy mã sản phẩm
+$productID = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 
 if ($productID <= 0) {
     header('Location: /products.php');
     exit;
 }
 
-
-// ============================================
-// TRUY VẤN THÔNG TIN CHI TIẾT SẢN PHẨM
-// ============================================
-
+// Lấy thông tin sản phẩm
 $sql = "
     SELECT
         p.ProductID,
@@ -32,17 +28,12 @@ $sql = "
         p.StockQuantity,
         c.CategoryName,
         s.SupplierName
-
-    FROM
-        products p,
-        categories c,
-        suppliers s
-
-    WHERE
-        p.CategoryID = c.CategoryID
-        AND p.SupplierID = s.SupplierID
-        AND p.ProductID = ?
-        AND p.IsActive = 1
+    FROM products p
+    INNER JOIN categories c ON p.CategoryID = c.CategoryID
+    INNER JOIN suppliers s ON p.SupplierID = s.SupplierID
+    WHERE p.ProductID = ?
+      AND p.IsActive = 1
+    LIMIT 1
 ";
 
 $stmt = $conn->prepare($sql);
@@ -58,7 +49,6 @@ if (!$stmt->execute()) {
 }
 
 $result = $stmt->get_result();
-
 $product = $result->fetch_assoc();
 
 $result->free();
@@ -69,42 +59,28 @@ if (!$product) {
     exit;
 }
 
-
-// ============================================
-// XỬ LÝ THÊM SẢN PHẨM VÀO GIỎ HÀNG
-// ============================================
-
+// Xử lý thêm sản phẩm vào giỏ hàng
 $cartMessage = '';
+$cartMessageType = 'info';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST'
-    && isset($_POST['add_to_cart'])) {
-
-    $quantity = isset($_POST['quantity'])
-        ? (int) $_POST['quantity']
-        : 1;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
+    $quantity = isset($_POST['quantity']) ? (int) $_POST['quantity'] : 1;
+    $stockQuantity = (int) $product['StockQuantity'];
 
     if ($quantity < 1) {
         $quantity = 1;
     }
 
-    $stockQuantity = (int) $product['StockQuantity'];
-
     if ($stockQuantity <= 0) {
-
         $cartMessage = 'Sản phẩm hiện đã hết hàng.';
-
+        $cartMessageType = 'warning';
     } else {
-
-        if (!isset($_SESSION['cart'])
-            || !is_array($_SESSION['cart'])) {
+        if (!isset($_SESSION['cart']) || !is_array($_SESSION['cart'])) {
             $_SESSION['cart'] = [];
         }
 
-        $currentQuantity =
-            (int) ($_SESSION['cart'][$productID] ?? 0);
-
-        $newQuantity =
-            $currentQuantity + $quantity;
+        $currentQuantity = (int) ($_SESSION['cart'][$productID] ?? 0);
+        $newQuantity = $currentQuantity + $quantity;
 
         if ($newQuantity > $stockQuantity) {
             $newQuantity = $stockQuantity;
@@ -112,32 +88,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'
 
         $_SESSION['cart'][$productID] = $newQuantity;
 
-        $cartMessage =
-            'Đã thêm sản phẩm vào giỏ hàng.';
+        $cartMessage = 'Đã thêm sản phẩm vào giỏ hàng.';
+        $cartMessageType = 'success';
     }
 }
 
-
-// ============================================
-// LẤY DANH SÁCH HÌNH ẢNH SẢN PHẨM
-// ============================================
-
+// Lấy danh sách hình ảnh sản phẩm
 $sqlImages = "
     SELECT
         ProductImageID,
         ImageFile,
         IsPrimary
-
-    FROM
-        product_images
-
-    WHERE
-        ProductID = ?
-
-    ORDER BY
-        IsPrimary DESC,
-        SortOrder ASC,
-        ProductImageID ASC
+    FROM product_images
+    WHERE ProductID = ?
+    ORDER BY IsPrimary DESC, SortOrder ASC, ProductImageID ASC
 ";
 
 $stmtImages = $conn->prepare($sqlImages);
@@ -153,7 +117,6 @@ if (!$stmtImages->execute()) {
 }
 
 $imageResult = $stmtImages->get_result();
-
 $images = [];
 
 while ($image = $imageResult->fetch_assoc()) {
@@ -163,11 +126,6 @@ while ($image = $imageResult->fetch_assoc()) {
 $imageResult->free();
 $stmtImages->close();
 
-
-// ============================================
-// NẠP GIAO DIỆN FRONTEND
-// ============================================
-
 $pageTitle = $product['ProductName'];
 
 require_once '/var/www/src/includes/frontend/header.php';
@@ -175,321 +133,203 @@ require_once '/var/www/src/includes/frontend/navbar.php';
 
 ?>
 
-<main class="container py-5">
+<main class="product-detail-page">
+    <div class="home-container">
 
-    <div class="mb-4">
+        <!-- Breadcrumb -->
+        <div class="detail-breadcrumb">
+            <a href="/">Trang chủ</a>
+            <span>/</span>
+            <a href="/products.php">Sản phẩm</a>
+            <span>/</span>
+            <span><?= e($product['ProductName']) ?></span>
+        </div>
 
-        <a
-            href="/products.php"
-            class="text-decoration-none"
-        >
-            &larr; Quay lại danh sách sản phẩm
-        </a>
+        <div class="detail-layout">
 
-    </div>
+            <!-- Khu vực hình ảnh -->
+            <section class="detail-gallery">
 
-    <div class="row g-5">
+                <?php if (!empty($images)): ?>
 
-        <!-- KHU VỰC HÌNH ẢNH -->
+                    <div class="detail-main-image">
+                        <img
+                            src="/uploads/products/<?= rawurlencode(basename($images[0]['ImageFile'])) ?>"
+                            alt="<?= e($product['ProductName']) ?>"
+                        >
+                    </div>
 
-        <div class="col-lg-6">
-
-            <?php if (!empty($images)): ?>
-
-                <div
-                    class="bg-light d-flex
-                           align-items-center
-                           justify-content-center
-                           p-3 mb-3"
-                    style="height: 420px;"
-                >
-
-                    <img
-                        src="/uploads/products/<?= htmlspecialchars(
-                            basename($images[0]['ImageFile']),
-                            ENT_QUOTES,
-                            'UTF-8'
-                        ) ?>"
-                        alt="<?= htmlspecialchars(
-                            $product['ProductName'],
-                            ENT_QUOTES,
-                            'UTF-8'
-                        ) ?>"
-                        style="
-                            width: 100%;
-                            height: 100%;
-                            object-fit: contain;
-                        "
-                    >
-
-                </div>
-
-                <?php if (count($images) > 1): ?>
-
-                    <div class="row g-2">
-
-                        <?php foreach ($images as $image): ?>
-
-                            <div class="col-4">
-
-                                <div
-                                    class="border rounded
-                                           bg-light
-                                           d-flex
-                                           align-items-center
-                                           justify-content-center
-                                           p-2"
-                                    style="height: 120px;"
-                                >
-
+                    <?php if (count($images) > 1): ?>
+                        <div class="detail-thumbnail-grid">
+                            <?php foreach ($images as $index => $image): ?>
+                                <div class="detail-thumbnail">
                                     <img
-                                        src="/uploads/products/<?= htmlspecialchars(
-                                            basename($image['ImageFile']),
-                                            ENT_QUOTES,
-                                            'UTF-8'
-                                        ) ?>"
-                                        alt="<?= htmlspecialchars(
-                                            $product['ProductName'],
-                                            ENT_QUOTES,
-                                            'UTF-8'
-                                        ) ?>"
-                                        style="
-                                            width: 100%;
-                                            height: 100%;
-                                            object-fit: contain;
-                                        "
+                                        src="/uploads/products/<?= rawurlencode(basename($image['ImageFile'])) ?>"
+                                        alt="<?= e($product['ProductName']) ?> - Ảnh <?= $index + 1 ?>"
+                                        loading="lazy"
                                     >
-
                                 </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
 
-                            </div>
+                <?php else: ?>
 
-                        <?php endforeach; ?>
-
+                    <div class="detail-no-image">
+                        <i class="bi bi-image"></i>
+                        <span>Chưa có hình ảnh sản phẩm</span>
                     </div>
 
                 <?php endif; ?>
 
-            <?php else: ?>
+            </section>
 
-                <div
-                    class="bg-light d-flex
-                           align-items-center
-                           justify-content-center
-                           text-muted"
-                    style="height: 420px;"
-                >
-                    Chưa có hình ảnh
+            <!-- Khu vực thông tin sản phẩm -->
+            <section class="detail-information">
+
+                <div class="detail-category">
+                    <i class="bi bi-grid"></i>
+                    <?= e($product['CategoryName']) ?>
                 </div>
 
-            <?php endif; ?>
+                <h1 class="detail-product-name">
+                    <?= e($product['ProductName']) ?>
+                </h1>
 
-        </div>
+                <p class="detail-product-code">
+                    Mã sản phẩm:
+                    <strong><?= e($product['ProductCode']) ?></strong>
+                </p>
 
-
-        <!-- KHU VỰC THÔNG TIN SẢN PHẨM -->
-
-        <div class="col-lg-6">
-
-            <p class="text-muted mb-2">
-
-                <?= htmlspecialchars(
-                    $product['CategoryName'],
-                    ENT_QUOTES,
-                    'UTF-8'
-                ) ?>
-
-            </p>
-
-            <h1 class="mb-3">
-
-                <?= htmlspecialchars(
-                    $product['ProductName'],
-                    ENT_QUOTES,
-                    'UTF-8'
-                ) ?>
-
-            </h1>
-
-            <p class="text-muted">
-
-                Mã sản phẩm:
-
-                <?= htmlspecialchars(
-                    $product['ProductCode'],
-                    ENT_QUOTES,
-                    'UTF-8'
-                ) ?>
-
-            </p>
-
-            <p class="fs-3 fw-bold">
-
-                <?= number_format(
-                    (float) $product['Price'],
-                    0,
-                    ',',
-                    '.'
-                ) ?> đ
-
-            </p>
-
-            <hr>
-
-            <dl class="row">
-
-                <dt class="col-sm-4">
-                    Danh mục
-                </dt>
-
-                <dd class="col-sm-8">
-
-                    <?= htmlspecialchars(
-                        $product['CategoryName'],
-                        ENT_QUOTES,
-                        'UTF-8'
-                    ) ?>
-
-                </dd>
-
-                <dt class="col-sm-4">
-                    Nhà cung cấp
-                </dt>
-
-                <dd class="col-sm-8">
-
-                    <?= htmlspecialchars(
-                        $product['SupplierName'],
-                        ENT_QUOTES,
-                        'UTF-8'
-                    ) ?>
-
-                </dd>
-
-                <dt class="col-sm-4">
-                    Đơn vị tính
-                </dt>
-
-                <dd class="col-sm-8">
-
-                    <?= htmlspecialchars(
-                        $product['Unit'] ?? '',
-                        ENT_QUOTES,
-                        'UTF-8'
-                    ) ?>
-
-                </dd>
-
-                <dt class="col-sm-4">
-                    Tồn kho
-                </dt>
-
-                <dd class="col-sm-8">
-
-                    <?= (int) $product['StockQuantity'] ?>
-
-                </dd>
-
-            </dl>
-
-
-            <!-- GIAO DIỆN THÊM VÀO GIỎ HÀNG -->
-
-            <?php if ($cartMessage !== ''): ?>
-
-                <div class="alert alert-info">
-                    <?= htmlspecialchars(
-                        $cartMessage,
-                        ENT_QUOTES,
-                        'UTF-8'
-                    ) ?>
+                <div class="detail-price">
+                    <?= number_format((float) $product['Price'], 0, ',', '.') ?> đ
                 </div>
 
-            <?php endif; ?>
+                <div class="detail-stock">
+                    <?php if ((int) $product['StockQuantity'] > 0): ?>
+                        <span class="stock-available">
+                            <i class="bi bi-check-circle-fill"></i>
+                            Còn hàng
+                        </span>
+                    <?php else: ?>
+                        <span class="stock-unavailable">
+                            <i class="bi bi-x-circle-fill"></i>
+                            Hết hàng
+                        </span>
+                    <?php endif; ?>
 
-            <?php if ((int) $product['StockQuantity'] > 0): ?>
+                    <span class="stock-quantity">
+                        Số lượng tồn: <?= (int) $product['StockQuantity'] ?>
+                    </span>
+                </div>
 
-                <form method="post" class="mb-4">
+                <div class="detail-divider"></div>
 
-                    <div class="row g-3 align-items-end">
+                <!-- Thông tin cơ bản -->
+                <div class="detail-specifications">
+                    <div class="specification-item">
+                        <span class="specification-label">Danh mục</span>
+                        <span class="specification-value">
+                            <?= e($product['CategoryName']) ?>
+                        </span>
+                    </div>
 
-                        <div class="col-auto">
+                    <div class="specification-item">
+                        <span class="specification-label">Nhà cung cấp</span>
+                        <span class="specification-value">
+                            <?= e($product['SupplierName']) ?>
+                        </span>
+                    </div>
 
-                            <label
-                                for="quantity"
-                                class="form-label"
-                            >
-                                Số lượng
-                            </label>
+                    <div class="specification-item">
+                        <span class="specification-label">Đơn vị tính</span>
+                        <span class="specification-value">
+                            <?= e($product['Unit'] ?? '') ?>
+                        </span>
+                    </div>
+                </div>
 
+                <!-- Thông báo thêm giỏ hàng -->
+                <?php if ($cartMessage !== ''): ?>
+                    <div class="alert alert-<?= e($cartMessageType) ?> detail-cart-alert" role="alert">
+                        <?= e($cartMessage) ?>
+
+                        <?php if ($cartMessageType === 'success'): ?>
+                            <a href="/cart.php" class="alert-link ms-1">
+                                Xem giỏ hàng
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Form thêm vào giỏ hàng -->
+                <?php if ((int) $product['StockQuantity'] > 0): ?>
+
+                    <form method="post" class="detail-add-cart-form">
+
+                        <label for="quantity" class="detail-quantity-label">
+                            Số lượng
+                        </label>
+
+                        <div class="detail-purchase-actions">
                             <input
                                 type="number"
                                 name="quantity"
                                 id="quantity"
-                                class="form-control"
+                                class="detail-quantity-input"
                                 value="1"
                                 min="1"
                                 max="<?= (int) $product['StockQuantity'] ?>"
-                                style="width: 100px;"
+                                required
                             >
-
-                        </div>
-
-                        <div class="col-auto">
 
                             <button
                                 type="submit"
                                 name="add_to_cart"
-                                class="btn btn-primary"
+                                class="btn-tech-primary detail-add-cart-button"
                             >
+                                <i class="bi bi-cart-plus"></i>
                                 Thêm vào giỏ hàng
                             </button>
-
                         </div>
 
-                    </div>
+                    </form>
 
-                </form>
+                <?php else: ?>
 
-            <?php else: ?>
+                    <button type="button" class="btn-tech-disabled" disabled>
+                        <i class="bi bi-cart-x"></i>
+                        Sản phẩm đã hết hàng
+                    </button>
 
-                <div class="alert alert-warning">
-                    Sản phẩm hiện đã hết hàng.
-                </div>
+                <?php endif; ?>
 
-            <?php endif; ?>
+                <a href="/products.php" class="detail-back-link">
+                    <i class="bi bi-arrow-left"></i>
+                    Tiếp tục xem sản phẩm
+                </a>
 
-
-            <!-- MÔ TẢ SẢN PHẨM -->
-
-            <?php if (!empty($product['Description'])): ?>
-
-                <hr>
-
-                <h5>Mô tả sản phẩm</h5>
-
-                <p>
-
-                    <?= nl2br(
-                        htmlspecialchars(
-                            $product['Description'],
-                            ENT_QUOTES,
-                            'UTF-8'
-                        )
-                    ) ?>
-
-                </p>
-
-            <?php endif; ?>
+            </section>
 
         </div>
 
-    </div>
+        <!-- Mô tả sản phẩm -->
+        <?php if (!empty($product['Description'])): ?>
+            <section class="detail-description-section">
+                <div class="detail-section-heading">
+                    <span class="section-kicker">THÔNG TIN SẢN PHẨM</span>
+                    <h2>Mô tả sản phẩm</h2>
+                </div>
 
+                <div class="detail-description-content">
+                    <?= nl2br(e($product['Description'])) ?>
+                </div>
+            </section>
+        <?php endif; ?>
+
+    </div>
 </main>
 
 <?php
-
 require_once '/var/www/src/includes/frontend/footer.php';
-
 ?>
